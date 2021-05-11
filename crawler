@@ -1,0 +1,389 @@
+
+import threading
+import os
+from random import randint
+
+import requests
+from urllib3.exceptions import InsecureRequestWarning
+import re
+import requests
+import random
+from bs4 import BeautifulSoup as bs
+
+import json
+import time
+import datetime
+import pytz
+from random import choice
+from urllib.parse import urlencode
+import multiprocessing as mp
+
+
+from scraper_api import ScraperAPIClient
+
+
+
+requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+_user_agents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 11_0 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A372 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.100 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 8.0.0; SM-G960F Build/R16NW) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 6.0; HTC One X10 Build/MRA58K; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/61.0.3163.98 Mobile Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 11_0 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A372 Safari/604.1',
+    'Mozilla/5.0 (X11; CrOS x86_64 8172.45.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.64 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9',
+    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1'
+]
+
+DEFAULT_PROXIES = ["1.251.31.43:80",
+                   "1.255.48.197:8080",
+                   "118.69.50.154:443",
+                   "177.54.144.126:8",
+                   "182.23.211.110:80",
+                   "183.89.101.226:3128",
+                   "196.27.119.131:80",
+                   "81.201.60.130:80",
+                   "88.199.21.76:80",
+                   "95.216.10.19:3128",
+                   "118.69.50.154:80",
+                   "140.227.237.154:1000",
+                   "201.48.165.189:8080",
+                   "80.241.222.138:80",
+                   "13.75.114.68:25222",
+                   "139.59.129.114:3128",
+                   "177.69.203.67:3128",
+                   "20.43.156.109:80",
+                   "80.241.222.137;80",
+                   "91.205.174.26:80",
+                   "162.14.18.11:80",
+                   "20.44.193.208:80",
+                   "20.43.156.27:80",
+                   "46.4.129.55:80",
+                   "213.136.78.253:5836",
+                   "35.230.21.108:80", ]
+def _get_free_proxies():
+    print('P', end='')
+    url = "https://free-proxy-list.net/"
+    # get the HTTP response and construct soup object
+    soup = bs(requests.get(url).content, "html.parser")
+    proxies = []
+    for row in soup.find("table", attrs={"id": "proxylisttable"}).find_all("tr")[1:]:
+        tds = row.find_all("td")
+        try:
+            ip = tds[0].text.strip()
+            port = tds[1].text.strip()
+            host = f"{ip}:{port}"
+            proxies.append(host)
+        except IndexError:
+            continue
+    return proxies
+
+
+def _get_free_proxies_2():
+    url = "https://www.proxynova.com/proxy-server-list"
+    # get the HTTP response and construct soup object
+    soup = bs(requests.get(url, headers={'User-Agent': choice(_user_agents),
+                                         'X-Requested-With': 'XMLHttpRequest', }).content, "html.parser")
+    proxies = []
+    for row in soup.find_all("tr"):
+        tds = row.find_all("td")
+        try:
+            ip = str(tds[0].find('script')).replace("<script>document.write('", '').replace("');</script>", '')
+            port = tds[1].text.strip()
+            host = f"{ip}:{port}"
+            speed = tds[3].text.replace(' ms', '').strip()
+            if (int(speed) > 1000):
+                proxies.append(host)
+        except IndexError:
+            continue
+    return proxies
+
+def get_session(new=False, proxies=None):
+    if new:
+        try:
+            proxies = _get_free_proxies() + DEFAULT_PROXIES
+        except:
+            proxies = DEFAULT_PROXIES
+        try:
+            proxies = proxies + _get_free_proxies_2()
+        except:
+            pass
+    elif proxies and len(proxies) > 0:
+        proxies = proxies
+    else:
+        try:
+            proxies = _get_free_proxies()
+        except:
+            proxies = DEFAULT_PROXIES
+        try:
+            proxies = proxies + _get_free_proxies_2()
+        except:
+            pass
+    for i in range(len(proxies)):
+        # construct an HTTP session
+        session = requests.Session()
+        # choose one random proxy
+        proxy = random.choice(proxies)
+        session.proxies = {"http": proxy, "https": proxy}
+        print('c', end='')
+        try:
+            check_valid = session.get("http://icanhazip.com", timeout=3)
+            if check_valid.status_code == 200:
+                if len(check_valid.text.strip()) > 100:
+                    continue
+                print("\nRequest page with IP:{}".format(check_valid.text.strip()))
+                return session, proxies
+        except Exception as e:
+            proxies.pop(i)
+            continue
+    return session, proxies
+
+
+class ShopeeScraper:
+    def __init__(self, user_agents=None, proxy=None):
+        self.client = ScraperAPIClient(os.environ.get('dd7d4c77e50f41f2a05fa19e9ce9bb4d'))
+
+    def get_url(self, url):
+        payload = {'api_key': '75d53510-8a3a-49e0-b44f-0151bea39e09', 'proxy': 'residential', 'timeout': '20000', 'url': url}
+        proxy_url = 'https://api.webscraping.ai/html?' + urlencode(payload)
+        return proxy_url
+
+    def change_session(self):
+        # self.session_refresh_count = 0
+        # self.proxies = _get_free_proxies() + DEFAULT_PROXIES
+        if self.session_refresh_count > 5:
+            new_session, self.proxies = get_session('new')
+            self.session_refresh_count = 0
+        else:
+            new_session, self.proxies = get_session(proxies=self.proxies)
+        self.session = new_session
+        self.session_refresh_count += 1
+        return new_session
+
+    def __random_agent(self):
+        if self.user_agents and isinstance(self.user_agents, list):
+            return choice(self.user_agents)
+        return choice(_user_agents)
+
+    def __request_url(self, store_id, limit='100', newest='0'):
+        print('__request_url start')
+        url = 'https://shopee.vn/api/v2/search_items/?by=pop&limit={limit}&match_id={store_id}&newest={newest}&order=desc&page_type=shop&shop_categoryids=&version=2'.format(
+            limit=limit, store_id=store_id, newest=newest)
+        print(url)    
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+                   'X-Requested-With': 'XMLHttpRequest',
+                   'Referer': 'https://shopee.vn/shop/{store_id}/search?shopCollection='.format(store_id=store_id),
+                   }
+                   
+        # url = self.get_url(url)
+        response = requests.get('http://api.scraperapi.com?api_key=dd7d4c77e50f41f2a05fa19e9ce9bb4d&url='+url, headers=headers)
+        print(response)
+        data = response.json()
+        
+        items = []
+        item = data.get('items', None)
+        
+        print('item_len: ',len(item))
+        for i in range(len(item)):
+            items.append(item[i]['itemid'])
+            print('item[i][itemid]: ',item[i]['itemid'])
+
+        
+        print('__request_url, end')
+            
+        return items
+
+    def __request_url_item(self, store_id, item_id):
+        print('__request_url_item start')
+        print(item_id)
+        print(store_id)
+        url = "https://shopee.vn/api/v2/item/get?itemid={item_id}&shopid={store_id}".format(item_id=item_id, store_id=store_id)
+        print(url)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+                   'X-Requested-With': 'XMLHttpRequest',
+                   'Referer': 'https://shopee.vn/shop/{store_id}/search?shopCollection='.format(store_id=store_id),
+                   }
+        
+        # url = self.get_url(url)
+        
+        # response = requests.get(url, headers=headers)
+        # print(response)
+        # response.raise_for_status()
+        # print('__request_url_item,end')
+        # return response
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            print('response', response)
+        except requests.HTTPError as e:
+            print(e)
+            print('item_id: ', item_id)
+            return int(item_id)
+        except requests.RequestException:
+            print(e)
+            print('item_id: ', item_id)
+            return int(item_id)
+        else:
+            print('else')
+            return response
+
+
+    def __request_url_item_without_proxy(self, store_id, item_id):
+        url = "https://shopee.vn/api/v2/item/get?itemid={item_id}&shopid={store_id}".format(item_id=item_id, store_id=store_id)
+        headers = {'User-Agent': choice(_user_agents),
+                   'X-Requested-With': 'XMLHttpRequest',
+                   'Referer': 'https://shopee.vn/shop/{store_id}/search?shopCollection='.format(store_id=store_id),
+                   }
+        try:
+            response = requests.get(url=url, headers=headers)
+            response.raise_for_status()
+        except requests.HTTPError as e:
+            print(e)
+            pass
+        except requests.RequestException:
+            pass
+        else:
+            return response
+
+    def get_or_create_product(self, shopid, itemid, view_count=None):
+        # shopid = store_obj.shopee_numeric_id
+
+        # 0. 상품 생성 및 호출
+        time.sleep(randint(0, 2))
+        data = self.__request_url_item(shopid, itemid)
+        
+        if type(data) == int:
+            return data
+        else:
+            data = data.json()
+            result = data.get('item', None)
+            print('result:', result)
+            return result    
+
+#
+    def search_store_item(self):
+        token = 'd08ea477589845665925c038b5a567ff6608d52e'
+        headers= {'Authorization': 'token ' + token,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json;charset=UTF-8'
+            }
+        store_item_list = {}
+        url = 'http://test.dabi-api.com/api/product/search/'
+        time.sleep(20)
+        response = requests.get(url, headers=headers)
+        print('endpoint: ',response)
+        if response:
+            try:
+                data = response.json()
+            except Exception as e:
+                print('Invalid response data in influencer_pk')
+                
+            if data:
+                # We should use .get when we have a dictionary for safety reason
+                result = data.get('results', None)
+                for i in range(len(result)):
+                    if result[i]['shopee_item_id'] not in store_item_list:
+                        store_item_list[result[i]['shopee_item_id']] = result[i]['store']
+                print(store_item_list)
+                    
+                return store_item_list
+
+    def refactor_search_item(self):
+        i = 0
+        empty_result = 0
+        item_info_2 = []
+        zero_stock_2 = []
+        store_item_list = self.search_store_item()
+        item_id = [j for j in store_item_list.keys()]
+        item_id = list(set(item_id))
+        delete_item = []
+        delete_item_list = {}
+        k = 0
+        while len(item_id) != k:
+
+            print('item_list: ',item_id)    
+            print(len(item_id))                               
+            # for k in item_id:
+            print(k)
+            print(store_item_list[item_id[k]])
+            time.sleep(10)
+            product_obj = self.get_or_create_product(
+            store_item_list[item_id[k]], item_id[k])
+            print('product_obj: ', product_obj)
+            if type(product_obj) == int or product_obj == None:
+                delete_item_list[item_id[k]] = store_item_list[item_id[k]]
+                delete_item.append(delete_item_list)
+                print(delete_item)
+                k+=1
+            elif product_obj['price']%100 == 0 and product_obj['price'] != 0:
+                if product_obj['stock'] == 0:
+                    zero_stock_2.append(product_obj)
+                    k+=1
+                else: 
+                    item_info_2.append(product_obj)
+                    k+=1
+            # item_info.append(product_obj)    
+            with open('item_2.json', 'w', encoding='UTF-8') as fp:
+                json.dump(item_info_2, fp, indent=4, ensure_ascii=False)
+
+            with open('zero_2.json', 'w', encoding='UTF-8') as zero:
+                json.dump(zero_stock_2, zero, indent=4, ensure_ascii=False)
+
+            with open('delete.json', 'w', encoding='UTF-8') as delete:
+                json.dump(delete_item, delete, indent=4, ensure_ascii=False)
+
+            if len(item_id) == k:
+                break
+
+
+
+    def refactor_search_store(self, limit):
+        i = 0
+        empty_result = 0
+        item_info_1 = []
+        zero_stock_1 = []
+        store_item_list = self.search_store_item()
+        store_id = [j for j in store_item_list.values()]
+        store_id = list(set(store_id))
+
+        while empty_result < 10:
+            try:
+                
+                item_list = self.__request_url(store_id[i],limit, newest=0)
+                print('item_list: ',item_list)                                    
+                for k in item_list:
+                    product_obj = self.get_or_create_product(
+                    store_id[i], k)
+                    if product_obj['price']%100 == 0 and product_obj['price'] != 0:
+                        if product_obj['stock'] == 0:
+                            zero_stock_1.append(product_obj)
+                        else: 
+                            item_info_1.append(product_obj)
+                            empty_result = 0
+                    # item_info.append(product_obj)    
+                    with open('item_1.json', 'w', encoding='UTF-8') as fp:
+                        json.dump(item_info_1, fp, indent=4, ensure_ascii=False)
+                    with open('zero_1.json', 'w', encoding='UTF-8') as zero:
+                        json.dump(zero_stock_1, zero, indent=4, ensure_ascii=False)   
+                else:
+                    empty_result += 1
+                    print(empty_result)
+            except:
+                print('R', end='')
+                empty_result += 1
+            i = i + 1
+        return i
+
+if __name__ == '__main__':
+
+    obj = ShopeeScraper()
+    choice = input("1. store update / 2. item update\n")
+    if choice == "1":
+        limit = input("limit: ")
+        obj.refactor_search_store(limit)
+    if choice == "2":
+        obj.refactor_search_item()
+      
+        
+
