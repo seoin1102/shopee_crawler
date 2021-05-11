@@ -1,0 +1,353 @@
+import json
+import base64
+import requests
+from datetime import datetime
+from time import sleep
+import re
+
+token = 'd08ea477589845665925c038b5a567ff6608d52e'
+headers= {'Authorization': 'token ' + token,
+    'Accept': 'application/json',
+    'Content-Type': 'application/json;charset=UTF-8'
+    }
+
+def search_id():
+    
+    
+    # url = 'http://test.dabi-api.com/api/product/search/'
+    item_id_list = {}
+    
+    num = 0
+    while 1:
+        sleep(10)
+        
+        url = 'http://test.dabi-api.com/api/product/search/?limit=20&offset='+ str(num)
+        print(url)
+        response = requests.get(url, headers=headers)
+        print('endpoint: ',response)
+        if response:
+            try:
+                data = response.json()
+            except Exception as e:
+                print('Invalid response data in influencer_pk')
+
+            if data:
+                # We should use .get when we have a dictionary for safety reason
+                result = data.get('results', None)
+                count = data.get('count', None)
+                print('count:' ,count)
+                if count ==0:
+                    return item_id_list    
+                next_ = data.get('next', None)
+                print('next_: ', next_)
+                j=0
+                for i in range(len(result)):
+                    if i not in item_id_list:
+                        item_id_list[result[i]['shopee_item_id']] = result[i]['pk']
+                        j+=1
+                    if count - num ==j:
+                        print('item_id_list: ',len(item_id_list))
+                        return item_id_list    
+                num+= 20 
+        else:
+            print(len(item_id_list))
+            return item_id_list         
+
+                    
+def search_pk():
+    url = 'http://test.dabi-api.com/api/product/'
+    sleep(20)
+    store_pk_list = {}
+    response = requests.get(url, headers=headers)
+    print('endpoint: ',response)
+    if response:
+        try:
+            data = response.json()
+        except Exception as e:
+            print('Invalid response data in influencer_pk')
+            
+        if data:
+            # We should use .get when we have a dictionary for safety reason
+            result = data.get('results', None)
+            for i in range(len(result)):
+                if i not in store_pk_list:
+                    store_pk_list[result[i]['store']['insta_id']] = result[i]['store']['pk']
+        return store_pk_list
+
+# store_pk_list = search_pk()
+
+
+store_pk_list = {'383300809':2,'66584257':3, '355625284':4, '91118658': 5, '207531870': 6, '106933589':7, '73512480':8, '10644659': 9, '66014967': 10, '369541615': 11, '13799408':12, '22468460': 13, '14746382': 14, '28853748':15, '71861331': 16, '31233825': 17, '43793830': 18, '177696070': 19}
+
+size_pk = {'XS': 1, 'S': 2, 'M': 3, 'L': 4, 'XL':5, '2XL':6, '3XL': 7, 'other': 8}
+color_pk = {'Đen': 1, 'Xám': 2, 'Trắng chanh': 3, 'Xanh': 4, 'Hồng': 5, 'Be' : 6, 'other':7, 'Trắng': 8, 'Đỏ':9, 'Tím': 10, 'Kem': 11}
+category_pk = {'Thời Tran':2, 'Thời Tra':2, 'T': 3, 'Thể Thao & Du': 4, 'Nhà Cửa & Đời': 5, 'other':6}
+sub_category_pk = {'Quần Thể': 1, 'Trang Phục thể': 2, 'Áo Thể': 3, 'other': 4, 'Áo': 5, 'Đồ lót, Đồ ngủ & Đồ mặ': 6, 'Đồ dùng phòn':7, 'Quần': 8, 'Đầm': 9, 'Áo khoác & Áo': 10}
+extra_pk = {}
+def send_file(filename):
+    item_id_list = search_id()
+    print(item_id_list)
+    with open(f'{filename}.json','rt', encoding='UTF8') as json_file:
+
+        result = json.load(json_file)
+
+        json_item_id_list = []
+        item_id = [int(i) for i in item_id_list.keys()]
+        for i in range(len(result)):
+            json_item_id_list.append(result[i]['itemid'])
+
+        update_item_list = set(json_item_id_list) & set(item_id)
+        print('update_item_list: ',update_item_list)
+        new_item_list = set(json_item_id_list) - update_item_list
+        print('new_item_list: ',new_item_list)
+        option = {}
+        color = []
+        size = []
+        extra_option = [] 
+        
+        images = []
+        item_info = []
+        store = {}
+        shopee_rating = {}
+        for i in range(len(result)):
+            itemid = result[i]['itemid']
+            shopid = result[i]['shopid']
+            name = result[i]['name']
+            product_link = 'https://shopee.vn/'+name.replace('[', '-').replace(']', '-').replace(' ', '-').replace('%', '-')+'-i.'+str(shopid)+'.'+str(itemid)
+            product_link = re.sub('(([-])\\2{1,})', '', product_link)
+            discount = result[i]["discount"]
+            if discount != None:
+                is_discount = True
+            else: 
+                is_discount = False    
+            sold = result[i]["sold"]
+            price_min_before_discount = result[i]["price_min_before_discount"]
+            price_max_before_discount = result[i]["price_max_before_discount"]
+            original_price = result[i]["price_before_discount"]/100000
+            # if price_before_discount > 2147483647:
+            #     price_before_discount = 2147483647
+            historical_sold = result[i]['historical_sold']
+            product_thumbnail_image = 'https://cf.shopee.vn/file/' + result[i]['images'][0]
+            base64_bytes = base64.b64encode(requests.get(product_thumbnail_image).content)
+            image_url = base64_bytes.decode('utf-8') 
+            size_chart = 'https://cf.shopee.vn/file/' + str(result[i]['size_chart'])
+            view_count = result[i]["view_count"]
+            is_free_ship = result[i]["show_free_shipping"]
+            liked_count = result[i]["liked_count"]
+            discount_stock = result[i]["discount_stock"]
+            stock = result[i]["stock"]
+            description = result[i]["description"]
+            reference_item_id = result[i]['reference_item_id']
+            bundle_deal_id = result[i]['bundle_deal_id']
+            category_id = result[i]['categories'][0]['catid']
+            sub_category_id = result[i]['categories'][1]['catid']
+            shopid = result[i]['shopid']
+            price_min = result[i]['price_min']
+            price_max = result[i]['price_max']
+            if discount == None:
+                discount = "0%"
+            discount_rate = discount.replace('%', '')
+            discount_price = result[i]['price'] / 100000
+            currency = result[i]['currency']
+            shopee_rating['shopee_rating'] = result[i]['item_rating']['rating_star']
+            updated_at = datetime.fromtimestamp(int(result[i]['ctime'])).strftime("%Y-%m-%d")
+            store['shopee_view_count'] = result[i]['view_count']
+            store['shopee_sold_count'] = result[i]['sold']
+            store['shopee_liked_count'] = result[i]['liked_count']
+            # store['store_star'] = result[i]['item_rating']['rating_star']
+            store['shopee_rating_star'] = result[i]['item_rating']['rating_star']
+            store['shopee_review_count'] = result[i]['item_rating']['rating_count'][4]+result[i]['item_rating']['rating_count'][3]+result[i]['item_rating']['rating_count'][2]+ \
+            result[i]['item_rating']['rating_count'][1]+result[i]['item_rating']['rating_count'][0]
+            store['shopee_1_star_count'] = result[i]['item_rating']['rating_count'][4]
+            store['shopee_2_star_count'] = result[i]['item_rating']['rating_count'][3]
+            store['shopee_3_star_count'] = result[i]['item_rating']['rating_count'][2]
+            store['shopee_4_star_count'] = result[i]['item_rating']['rating_count'][1]
+            store['shopee_5_star_count'] = result[i]['item_rating']['rating_count'][0]
+            current_review_rating = result[i]['item_rating']['rating_star']
+            current_review_rating = round(current_review_rating,1)
+
+            category_key = [i for i in category_pk.keys()]
+            if category_id==None:
+                category_id = category_pk["other"]
+            elif category_id not in category_key:
+                category_id = category_pk["other"]
+            else:
+                category_id = category_pk[category_id]
+
+            sub_category_key = [i for i in sub_category_pk.keys()]
+            if sub_category_id==None:
+                sub_category_id = sub_category_pk["other"]
+            elif sub_category_id not in category_key:
+                sub_category_id = sub_category_pk["other"]
+            else:
+                sub_category_id = sub_category_pk[sub_category_id]
+
+
+            if len(result[i]['images'])>1:
+                product_image_type = "MP"
+            elif len(result[i]['images'])==1:
+                product_image_type = "SP"
+
+            if len(result[i]["video_info_list"]) >0:
+                video_source = 'https://cf.shopee.vn/file/' + result[i]["video_info_list"][0]['video_id']
+                product_image_type = "V"
+            else:
+                video_source = 'None'
+            color_ids = []
+            size_ids = []
+            other_color = 0
+            other_size = 0
+            # ["price"]
+            for k in range(len(result[i]['tier_variations'])):
+                if result[i]['tier_variations'][k]['name'] == 'Màu' or result[i]['tier_variations'][k]['name'] == 'màu':
+                    color = result[i]['tier_variations'][k]['options']
+                elif result[i]['tier_variations'][k]['name'] == 'Size' or result[i]['tier_variations'][k]['name'] == 'sz': 
+                    size = result[i]['tier_variations'][k]['options']
+                else:
+                    extra_option = result[i]['tier_variations'][k]['options']
+            color_key = [key for key in color_pk.keys()]
+            size_key = [key for key in size_pk.keys()]
+            extra_key = [key for key in extra_pk.keys()]
+            for i in color:
+                if i in color_key:
+                    color_ids.append(color_pk[i])
+                if i not in color_key:
+                    color_ids.append(color_pk['other'])
+                    print("other color!", i)
+                    other_color += 1
+            for i in size:
+                if i in size_key:
+                    size_ids.append(size_pk[i])
+                if i not in size_key:
+                    size_ids.append(size_pk['other']) 
+                    print("other size!", i)
+                    other_size += 1     
+
+            extra_option_ids = []
+            models_pricere = {}
+
+            pk = store_pk_list[str(shopid)]
+            dic = {"is_active": True, "product_source": 'SHOPEE',
+            "product_link": product_link, "is_feedback_exist": False,'current_review_rating': current_review_rating,
+            "shopee_rating": store,
+            'store_id': pk, 'name': name, 'description': description,
+            'product_image_type':product_image_type,
+            'product_thumbnail_image': product_thumbnail_image, "video_source": video_source,
+            'is_discount': is_discount, 'is_free_ship':is_free_ship, 'currency': currency,
+                'original_price': original_price, 'discount_price':discount_price,
+            'discount_rate': discount_rate, "sold": sold, "stock": stock,
+            'size_ids': size_ids, 'size_chart': None,'category_id' : category_id,
+                'sub_category_id' : sub_category_id,'color_ids': color_ids, 'updated_at' : updated_at,
+            'shopee_item_id': itemid, 'product_options_ids': [],
+                    'extra_option_ids' : extra_option_ids}
+            dic2 = {
+            'current_review_rating': current_review_rating, 'store_id': pk,
+            'product_image_type':product_image_type,
+            'product_thumbnail_image': product_thumbnail_image, "video_source": video_source,
+            'is_discount': is_discount, 'is_free_ship':is_free_ship, 'currency': currency,
+                'original_price': original_price, 'discount_price':discount_price,
+            'discount_rate': discount_rate, "sold": sold, "stock": stock,
+            'size_ids': size_ids, 'category_id' : category_id,
+            'sub_category_id' : sub_category_id,  
+            'color_ids': color_ids,
+            'shopee_item_id': itemid, 'product_options_ids': [],
+                    'extra_option_ids' : extra_option_ids
+                    }
+            dic3 = {"is_active": False, 'current_review_rating': current_review_rating, 'store_id': pk,
+            'product_image_type':product_image_type,
+            'product_thumbnail_image': product_thumbnail_image, "video_source": video_source,
+            'is_discount': is_discount, 'is_free_ship':is_free_ship, 'currency': currency,
+                'original_price': original_price, 'discount_price':discount_price,
+            'discount_rate': discount_rate, "sold": sold, "stock": stock,
+            'size_ids': size_ids, 'category_id' : category_id,
+            'sub_category_id' : sub_category_id,  
+            'color_ids': color_ids, 'updated_at' : updated_at,
+            'shopee_item_id': itemid, 'product_options_ids': [],
+                    'extra_option_ids' : extra_option_ids
+            }     
+
+            dic4 = {"is_active": False, "product_source": 'SHOPEE',
+            "product_link": product_link, "is_feedback_exist": False,'current_review_rating': current_review_rating,
+            "shopee_rating": store,
+            'store_id': pk, 'name': name, 'description': description,
+            'product_image_type':product_image_type,
+            'product_thumbnail_image': product_thumbnail_image, "video_source": video_source,
+            'is_discount': is_discount, 'is_free_ship':is_free_ship, 'currency': currency,
+                'original_price': original_price, 'discount_price':discount_price,
+            'discount_rate': discount_rate, "sold": sold, "stock": stock,
+            'size_ids': size_ids, 'size_chart': None,'category_id' : category_id,
+                'sub_category_id' : sub_category_id,'color_ids': color_ids, 'updated_at' : updated_at,
+            'shopee_item_id': itemid, 'product_options_ids': [],
+                    'extra_option_ids' : extra_option_ids}   
+
+            json.dumps(dic, indent=4, ensure_ascii=False)
+            json.dumps(dic2, indent=4, ensure_ascii=False)
+            json.dumps(dic3, indent=4, ensure_ascii=False)
+            json.dumps(dic4, indent=4, ensure_ascii=False)
+            if filename == 'zero_1' or filename == 'zero_2':
+                if itemid in update_item_list:
+                    print('Update Deactivate product!')
+                    pk = item_id_list[str(itemid)]  
+                    print(pk)
+                    sleep(20)  
+                    print(requests.patch(f'http://test.dabi-api.com/api/product/{pk}/', json=dic3, headers=headers))
+
+                elif itemid in new_item_list:
+                    sleep(20)
+                    print('New Deactivate product!')
+                    print(requests.post('http://test.dabi-api.com/api/product/', json=dic4, headers=headers))
+                    sleep(20)
+                    item_id_list = search_id()
+            elif filename == 'item_1' or filename == 'item_2':   
+                if itemid in update_item_list:
+                    print('Update activate product!')
+                    pk = item_id_list[str(itemid)]  
+                    print(pk)
+                    sleep(20)  
+                    print(requests.patch(f'http://test.dabi-api.com/api/product/{pk}/', json=dic2, headers=headers))
+
+
+                elif itemid in new_item_list:
+                    sleep(20)
+                    print('New activate product!')
+                    print(requests.post('http://test.dabi-api.com/api/product/', json=dic, headers=headers))
+                    sleep(20)
+                    item_id_list = search_id()
+
+def delete_item(filename):
+    item_id_list = search_id()
+    item_id = [int(i) for i in item_id_list.keys()]
+    delete_list = dict()
+    dic5 = {"is_active": False}
+    json.dumps(dic5, indent=4, ensure_ascii=False)
+    k = 0
+    with open(f'{filename}.json','rt', encoding='UTF8') as json_file:
+        result = json.load(json_file)
+        for x in result:
+            if list(x.keys())[0] in delete_list:
+                delete_list[list(x.keys())[0]] += list(x.values())[0]
+            else:
+                delete_list[list(x.keys())[0]] = list(x.values())[0]
+
+        for i in delete_list:    
+            if i in item_id:
+                pk = item_id_list[i] 
+                sleep(20)  
+                print(requests.patch(f'http://test.dabi-api.com/api/product/{pk}/', json=dic5, headers=headers)) 
+                k+=1   
+            else:
+                print('already deactivated!')
+        print('deactivated item: ', k)        
+                         
+name = input('file name: ')
+if name =='delete':
+    delete_item(name)
+else:
+    send_file(name)            
+
+        
+
+
+        
+
+    
