@@ -270,7 +270,7 @@ class ShopeeScraper:
             }
         store_item_list = {}
         url = 'http://test.dabi-api.com/api/product/search/'
-        time.sleep(20)
+        time.sleep(10)
         response = requests.get(url, headers=headers)
         print('endpoint: ',response)
         if response:
